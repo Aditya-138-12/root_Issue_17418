@@ -58,6 +58,7 @@
 #include <vector>
 #include <iomanip>
 #include <numeric> // std::accumulate in MeanHelper
+#include <optional> // std::optional<int> in SetBranchesHelper
 
 /// \cond HIDDEN_SYMBOLS
 
@@ -1397,7 +1398,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
 /// `branchAddress`) so we can intercept changes in the address of the input branch and tell the output branch.
 template <typename T>
 void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &inName, const std::string &outName,
-                       TBranch *&branch, void *&branchAddress, RVec<T> *ab, RBranchSet &outputBranches, bool isDefine, const RSnapshotOptions &options)
+                       TBranch *&branch, void *&branchAddress, RVec<T> *ab, RBranchSet &outputBranches, bool isDefine, const std::optional<int> basketSize)
 {
    TBranch *inputBranch = nullptr;
    if (inputTree) {
@@ -1438,8 +1439,8 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       } else {
          auto *b = outputTree.Branch(outName.c_str(), ab);
          // Set Custom basket size for new branches.
-         if(isNewBranch && options.fBasketSize > 0){
-            b->SetBasketSize(options.fBasketSize);
+         if(isNewBranch && basketSize.value() > 0){
+            b->SetBasketSize(basketSize.value());
          }
          outputBranches.Insert(outName, b);
       }
@@ -1486,7 +1487,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       } else {
          const auto leaflist = std::string(bname) + "[" + sizeLeafName + "]/" + rootbtype;
          //Use original basket size for existing branches and new basket size for new branches
-         const auto branchBufSize = isNewBranch && options.fBasketSize > 0 ? options.fBasketSize : inputBranch->GetBasketSize();
+         const auto branchBufSize = isNewBranch && basketSize.value() > 0 ? basketSize.value() : inputBranch->GetBasketSize();
          outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str(), branchBufSize);
          outputBranch->SetTitle(inputBranch->GetTitle());
          outputBranches.Insert(outName, outputBranch);
@@ -1587,7 +1588,7 @@ public:
    {
       // create branches in output tree
       int expander[] = {(SetBranchesHelper(fInputTree, *fOutputTree, fInputBranchNames[S], fOutputBranchNames[S],
-                                           fBranches[S], fBranchAddresses[S], &values, fOutputBranches, fIsDefine[S], fOptions),
+                                           fBranches[S], fBranchAddresses[S], &values, fOutputBranches, fIsDefine[S], fOptions.fBasketSize),
                          0)...,
                         0};
       fOutputBranches.AssertNoNullBranchAddresses();
@@ -1788,7 +1789,7 @@ public:
       // hack to call TTree::Branch on all variadic template arguments
       int expander[] = {(SetBranchesHelper(fInputTrees[slot], *fOutputTrees[slot], fInputBranchNames[S],
                                            fOutputBranchNames[S], fBranches[slot][S], fBranchAddresses[slot][S],
-                                           &values, fOutputBranches[slot], fIsDefine[S], fOptions),
+                                           &values, fOutputBranches[slot], fIsDefine[S], fOptions.fBasketSize),
                          0)...,
                         0};
       fOutputBranches[slot].AssertNoNullBranchAddresses();
