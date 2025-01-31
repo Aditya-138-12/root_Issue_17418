@@ -1397,7 +1397,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
 /// `branchAddress`) so we can intercept changes in the address of the input branch and tell the output branch.
 template <typename T>
 void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &inName, const std::string &outName,
-                       TBranch *&branch, void *&branchAddress, RVec<T> *ab, RBranchSet &outputBranches, bool isDefine)
+                       TBranch *&branch, void *&branchAddress, RVec<T> *ab, RBranchSet &outputBranches, bool isDefine, const RSnapshotOptions &options)
 {
    TBranch *inputBranch = nullptr;
    if (inputTree) {
@@ -1406,6 +1406,8 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          inputBranch = inputTree->FindBranch(inName.c_str());
    }
    auto *outputBranch = outputBranches.Get(outName);
+
+   bool isNewBranch = isDefine || !inputBranch;    // Determine if this is a new branch or not (Created via Define).
 
    // if no backing input branch, we must write out an RVec
    bool mustWriteRVec = (inputBranch == nullptr || isDefine);
@@ -1435,6 +1437,10 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          outputBranch->SetObject(ab);
       } else {
          auto *b = outputTree.Branch(outName.c_str(), ab);
+         // Set Custom basket size for new branches.
+         if(isNewBranch && options.fBasketSize > 0){
+            b->SetBasketSize(options.fBasketSize);
+         }
          outputBranches.Insert(outName, b);
       }
       return;
@@ -1462,6 +1468,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          // added to the output tree yet. However, the size leaf has to be available for the creation of the array
          // branch to be successful. So we create the size leaf here.
          const auto sizeTypeStr = TypeName2ROOTTypeName(sizeLeaf->GetTypeName());
+         // Use Original basket size for Existing Branches.
          const auto sizeBufSize = sizeLeaf->GetBranch()->GetBasketSize();
          // The null branch address is a placeholder. It will be set when SetBranchesHelper is called for `sizeLeafName`
          auto *sizeBranch = outputTree.Branch(sizeLeafName.c_str(), (void *)nullptr,
@@ -1478,7 +1485,9 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
                  bname);
       } else {
          const auto leaflist = std::string(bname) + "[" + sizeLeafName + "]/" + rootbtype;
-         outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str());
+         //Use original basket size for existing branches and new basket size for new branches
+         const auto branchBufSize = isNewBranch && options.fBasketSize > 0 ? options.fBasketSize : inputBranch->GetBasket();
+         outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str(), branchBufSize);
          outputBranch->SetTitle(inputBranch->GetTitle());
          outputBranches.Insert(outName, outputBranch);
          branch = outputBranch;
@@ -1578,7 +1587,7 @@ public:
    {
       // create branches in output tree
       int expander[] = {(SetBranchesHelper(fInputTree, *fOutputTree, fInputBranchNames[S], fOutputBranchNames[S],
-                                           fBranches[S], fBranchAddresses[S], &values, fOutputBranches, fIsDefine[S]),
+                                           fBranches[S], fBranchAddresses[S], &values, fOutputBranches, fIsDefine[S], fOptions),
                          0)...,
                         0};
       fOutputBranches.AssertNoNullBranchAddresses();
@@ -1779,7 +1788,7 @@ public:
       // hack to call TTree::Branch on all variadic template arguments
       int expander[] = {(SetBranchesHelper(fInputTrees[slot], *fOutputTrees[slot], fInputBranchNames[S],
                                            fOutputBranchNames[S], fBranches[slot][S], fBranchAddresses[slot][S],
-                                           &values, fOutputBranches[slot], fIsDefine[S]),
+                                           &values, fOutputBranches[slot], fIsDefine[S], fOptions),
                          0)...,
                         0};
       fOutputBranches[slot].AssertNoNullBranchAddresses();
