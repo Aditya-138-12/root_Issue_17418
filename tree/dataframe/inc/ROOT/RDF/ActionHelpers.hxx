@@ -1486,7 +1486,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       } else {
          const auto leaflist = std::string(bname) + "[" + sizeLeafName + "]/" + rootbtype;
          //Use original basket size for existing branches and new basket size for new branches
-         const auto branchBufSize = isNewBranch && options.fBasketSize > 0 ? options.fBasketSize : inputBranch->GetBasket();
+         const auto branchBufSize = isNewBranch && options.fBasketSize > 0 ? options.fBasketSize : inputBranch->GetBasketSize();
          outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str(), branchBufSize);
          outputBranch->SetTitle(inputBranch->GetTitle());
          outputBranches.Insert(outName, outputBranch);
