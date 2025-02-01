@@ -47,7 +47,7 @@ struct RSnapshotOptions {
    bool fLazy = false;                              ///< Do not start the event loop when Snapshot is called
    bool fOverwriteIfExists = false; ///< If fMode is "UPDATE", overwrite object in output file if it already exists
    bool fVector2RVec = true;        ///< If set to true will convert std::vector columns to RVec when saving to disk
-   std::optional<int> fBasketSize {};         /// Set a custom basket size option. For more details, see https://root.cern/manual/trees/#baskets-clusters-and-the-tree-header
+   std::optional<int> fBasketSize {};         ///< Set a custom basket size option. For more details, see https://root.cern/manual/trees/#baskets-clusters-and-the-tree-header
 };
 } // namespace RDF
 } // namespace ROOT
