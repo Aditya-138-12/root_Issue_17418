@@ -1362,12 +1362,14 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       return;
    }
 
+   bool isNewBranch = isDefine || !inputBranch;    // Determine if this is a new branch or not (Created via Define).
+
    if (inputBranch) {
       // Respect the original bufsize and splitlevel arguments
       // In particular, by keeping splitlevel equal to 0 if this was the case for `inputBranch`, we avoid
       // writing garbage when unsplit objects cannot be written as split objects (e.g. in case of a polymorphic
       // TObject branch, see https://bit.ly/2EjLMId ).
-      const auto bufSize = inputBranch->GetBasketSize();
+      const auto bufSize = isNewBranch && basketSize.has_value() ? basketSize.value() : inputBranch->GetBasketSize();   //Use original basket size for existing branches and new basket size for new branches
       const auto splitLevel = inputBranch->GetSplitLevel();
 
       if (inputBranch->IsA() == TBOClRef) {
@@ -1379,6 +1381,10 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       }
    } else {
       outputBranch = outputTree.Branch(name.c_str(), address);
+      // Set Custom basket size for new branches.
+      if(isNewBranch && basketSize.has_value()){
+         outputBranch->SetBasketSize(basketSize.value());
+      }
    }
    outputBranches.Insert(name, outputBranch);
    // This is not an array branch, so we don't register the address of the output branch here
@@ -1486,7 +1492,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
                  bname);
       } else {
          const auto leaflist = std::string(bname) + "[" + sizeLeafName + "]/" + rootbtype;
-         //Use original basket size for existing branches and new basket size for new branches
+         // Use original basket size for existing branches and new basket size for new branches
          const auto branchBufSize = isNewBranch && basketSize.has_value() ? basketSize.value() : inputBranch->GetBasketSize();
          outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str(), branchBufSize);
          outputBranch->SetTitle(inputBranch->GetTitle());
