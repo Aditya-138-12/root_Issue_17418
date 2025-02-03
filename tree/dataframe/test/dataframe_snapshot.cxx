@@ -68,17 +68,18 @@ private:
    std::string fInputFile;
    std::string fOutputFileCustom;
    std::string fOutputFileCollection;
-   TFile fFile;
-   TTree fTree;
 
 public:
    SnapshotCustomBasketRAII() : 
       fInputFile("input_file.root"),
       fOutputFileCustom("output_file_custom_basket.root"),
-      fOutputFileCollection("output_file_collection_basket.root"),
-      fFile(fInputFile.c_str(), "RECREATE"),
-      fTree("tree", "Test Tree")
+      fOutputFileCollection("output_file_collection_basket.root")
    {
+
+      // Create file and tree inside the constructor body
+      TFile fFile(fInputFile.c_str(), "RECREATE");
+      TTree fTree("tree", "Test Tree");
+
       // Create scalar branch
       float value = 0;
       fTree.Branch("branch_x", &value);
@@ -107,9 +108,9 @@ public:
       gSystem->Unlink(fOutputFileCollection.c_str());
    }
 
-   std::string GetInputFile() const { return fInputFile; }
-   std::string GetOutputFileCustom() const { return fOutputFileCustom; }
-   std::string GetOutputFileCollection() const { return fOutputFileCollection; }
+   const std::string &GetInputFile() const { return fInputFile; }
+   const std::string &GetOutputFileCustom() const { return fOutputFileCustom; }
+   const std::string &GetOutputFileCollection() const { return fOutputFileCollection; }
 };
 
 void TestCustomBasketSize() {
@@ -153,7 +154,7 @@ void TestCustomBasketSize() {
 }
 
 // Test for custom basket size
-TEST(RDFSnapshotMore, CustomBasketSizeMT){
+TEST(RDFSnapshotMore, CustomBasketSize){
    TestCustomBasketSize();
 }
 
