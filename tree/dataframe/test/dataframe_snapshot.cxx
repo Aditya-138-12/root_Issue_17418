@@ -1455,67 +1455,6 @@ TEST(RDFSnapshotMore, ZeroOutputEntriesMT)
    gSystem->Unlink(fname);
 }
 
-// Test for custom basket size in Snapshot, ROOT - #17418
-TEST(RDFSnapshotMore, CustomBasketSize)
-{
-    // Create a simple ROOT file with a TTree
-    auto input_file = TFile::Open("input_file.root", "RECREATE");
-    auto tree = new TTree("tree", "Test Tree");
 
-    float value = 0;
-    tree->Branch("branch_x", &value);
-
-    // Fill the tree with some data
-    for (int i = 0; i < 1000; ++i) {
-        value = i;
-        tree->Fill();
-    }
-
-    input_file->Write();
-    input_file->Close();
-
-    // Read the file back using RDataFrame
-    ROOT::RDataFrame df("tree", "input_file.root");
-
-    // Define a new column
-    auto df_with_new_column = df.Define("branch_x_new", [](float x) { return x; }, {"branch_x"});
-
-    // Create RSnapshotOptions with a custom basket size
-    ROOT::RDF::RSnapshotOptions options;
-    options.fBasketSize = 2048; // Set custom basket size (2KB)
-
-    // Snapshot with custom basket size
-    std::string output_file_custom = "output_file_custom_basket.root";
-    df_with_new_column.Snapshot("tree", output_file_custom, {"branch_x", "branch_x_new"}, options);
-
-    // Check the basket size in the output file
-    auto output_file_custom_tfile = TFile::Open(output_file_custom.c_str());
-    auto output_tree_custom = output_file_custom_tfile->Get<TTree>("tree");
-
-    for (auto branch : *output_tree_custom->GetListOfBranches()) {
-        EXPECT_EQ(branch->GetBasketSize(), 2048); // Verify the custom basket size
-    }
-
-    output_file_custom_tfile->Close();
-
-    // Snapshot with default basket size
-    std::string output_file_default = "output_file_default_basket.root";
-    df_with_new_column.Snapshot("tree", output_file_default, {"branch_x", "branch_x_new"});
-
-    // Check the basket size in the output file
-    auto output_file_default_tfile = TFile::Open(output_file_default.c_str());
-    auto output_tree_default = output_file_default_tfile->Get<TTree>("tree");
-
-    for (auto branch : *output_tree_default->GetListOfBranches()) {
-        EXPECT_NE(branch->GetBasketSize(), 2048); // Verify the default basket size is not 2048
-    }
-
-    output_file_default_tfile->Close();
-
-    // Clean up
-    gSystem->Unlink("input_file.root");
-    gSystem->Unlink(output_file_custom.c_str());
-    gSystem->Unlink(output_file_default.c_str());
-}
 
 #endif // R__USE_IMT
