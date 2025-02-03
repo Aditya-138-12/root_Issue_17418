@@ -61,8 +61,99 @@ protected:
 };
 #endif // R__USE_IMT
 
+
+// Test for custom basket size in Snapshot
+class SnapshotCustomBasketRAII {
+private:
+   std::string fInputFile;
+   std::string fOutputFileCustom;
+   std::string fOutputFileCollection;
+   TFile fFile;
+   TTree fTree;
+
+public:
+   SnapshotCustomBasketRAII() : 
+      fInputFile("input_file.root"),
+      fOutputFileCustom("output_file_custom_basket.root"),
+      fOutputFileCollection("output_file_collection_basket.root"),
+      fFile(fInputFile.c_str(), "RECREATE"),
+      fTree("tree", "Test Tree")
+   {
+      // Create scalar branch
+      float value = 0;
+      fTree.Branch("branch_x", &value);
+
+      // Create vector branch
+      std::vector<float> vec_values;
+      fTree.Branch("branch_vec", &vec_values);
+
+      // Fill the tree with some data
+      for (int i = 0; i < 1000; ++i) {
+         value = i;
+         vec_values.clear();
+         // Add some random number of elements to the vector
+         int vec_size = i % 10 + 1;  // 1 to 10 elements
+         for (int j = 0; j < vec_size; ++j) {
+            vec_values.push_back(i + j * 0.1f);
+         }
+         fTree.Fill();
+      }
+      fFile.Write();
+   }
+
+   ~SnapshotCustomBasketRAII() {
+      gSystem->Unlink(fInputFile.c_str());
+      gSystem->Unlink(fOutputFileCustom.c_str());
+      gSystem->Unlink(fOutputFileCollection.c_str());
+   }
+
+   std::string GetInputFile() const { return fInputFile; }
+   std::string GetOutputFileCustom() const { return fOutputFileCustom; }
+   std::string GetOutputFileCollection() const { return fOutputFileCollection; }
+};
+
+void TestCustomBasketSize() {
+    SnapshotCustomBasketRAII raii;
+    
+    ROOT::RDataFrame df("tree", raii.GetInputFile());
+    
+    auto df_with_new_columns = df
+        .Define("branch_x_new", [](float x) { return x * 2; }, {"branch_x"})
+        .Define("branch_vec_new", [](const std::vector<float>& vec) {
+            std::vector<float> result;
+            result.reserve(vec.size());
+            for (auto v : vec) result.push_back(v * 2);
+            return result;
+        }, {"branch_vec"});
+    
+    ROOT::RDF::RSnapshotOptions options;
+    options.fBasketSize = 2048;
+    
+    df_with_new_columns.Snapshot("tree", raii.GetOutputFileCustom(),
+        {"branch_x", "branch_x_new"}, options);
+    
+    df_with_new_columns.Snapshot("tree", raii.GetOutputFileCollection(),
+        {"branch_vec", "branch_vec_new"}, options);
+    
+    TFile output_file_custom(raii.GetOutputFileCustom().c_str());
+    auto output_tree_custom = output_file_custom.Get<TTree>("tree");
+    
+    for (auto b : TRangeDynCast<TBranch>(*output_tree_custom->GetListOfBranches())) {
+        ASSERT_TRUE(b != nullptr);
+        EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for scalar branch " << b->GetName();
+    }
+    
+    TFile output_file_collection(raii.GetOutputFileCollection().c_str());
+    auto output_tree_collection = output_file_collection.Get<TTree>("tree");
+    
+    for (auto b : TRangeDynCast<TBranch>(*output_tree_collection->GetListOfBranches())) {
+        ASSERT_TRUE(b != nullptr);
+        EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for collection branch " << b->GetName();
+    }
+}
+
 // Test for custom basket size
-TEST(RDFSnapshotMore, CustomBasketSize){
+TEST(RDFSnapshotMore, CustomBasketSizeMT){
    TestCustomBasketSize();
 }
 
@@ -1460,97 +1551,7 @@ TEST(RDFSnapshotMore, ZeroOutputEntriesMT)
    gSystem->Unlink(fname);
 }
 
-// Test for custom basket size in Snapshot
-class SnapshotCustomBasketRAII {
-private:
-   std::string fInputFile;
-   std::string fOutputFileCustom;
-   std::string fOutputFileCollection;
-   TFile fFile;
-   TTree fTree;
-
-public:
-   SnapshotCustomBasketRAII() : 
-      fInputFile("input_file.root"),
-      fOutputFileCustom("output_file_custom_basket.root"),
-      fOutputFileCollection("output_file_collection_basket.root"),
-      fFile(fInputFile.c_str(), "RECREATE"),
-      fTree("tree", "Test Tree")
-   {
-      // Create scalar branch
-      float value = 0;
-      fTree.Branch("branch_x", &value);
-
-      // Create vector branch
-      std::vector<float> vec_values;
-      fTree.Branch("branch_vec", &vec_values);
-
-      // Fill the tree with some data
-      for (int i = 0; i < 1000; ++i) {
-         value = i;
-         vec_values.clear();
-         // Add some random number of elements to the vector
-         int vec_size = i % 10 + 1;  // 1 to 10 elements
-         for (int j = 0; j < vec_size; ++j) {
-            vec_values.push_back(i + j * 0.1f);
-         }
-         fTree.Fill();
-      }
-      fFile.Write();
-   }
-
-   ~SnapshotCustomBasketRAII() {
-      gSystem->Unlink(fInputFile.c_str());
-      gSystem->Unlink(fOutputFileCustom.c_str());
-      gSystem->Unlink(fOutputFileCollection.c_str());
-   }
-
-   std::string GetInputFile() const { return fInputFile; }
-   std::string GetOutputFileCustom() const { return fOutputFileCustom; }
-   std::string GetOutputFileCollection() const { return fOutputFileCollection; }
-};
-
-void TestCustomBasketSize() {
-    SnapshotCustomBasketRAII raii;
-    
-    ROOT::RDataFrame df("tree", raii.GetInputFile());
-    
-    auto df_with_new_columns = df
-        .Define("branch_x_new", [](float x) { return x * 2; }, {"branch_x"})
-        .Define("branch_vec_new", [](const std::vector<float>& vec) {
-            std::vector<float> result;
-            result.reserve(vec.size());
-            for (auto v : vec) result.push_back(v * 2);
-            return result;
-        }, {"branch_vec"});
-    
-    ROOT::RDF::RSnapshotOptions options;
-    options.fBasketSize = 2048;
-    
-    df_with_new_columns.Snapshot("tree", raii.GetOutputFileCustom(),
-        {"branch_x", "branch_x_new"}, options);
-    
-    df_with_new_columns.Snapshot("tree", raii.GetOutputFileCollection(),
-        {"branch_vec", "branch_vec_new"}, options);
-    
-    TFile output_file_custom(raii.GetOutputFileCustom().c_str());
-    auto output_tree_custom = output_file_custom.Get<TTree>("tree");
-    
-    for (auto b : TRangeDynCast<TBranch>(*output_tree_custom->GetListOfBranches())) {
-        ASSERT_TRUE(b != nullptr);
-        EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for scalar branch " << b->GetName();
-    }
-    
-    TFile output_file_collection(raii.GetOutputFileCollection().c_str());
-    auto output_tree_collection = output_file_collection.Get<TTree>("tree");
-    
-    for (auto b : TRangeDynCast<TBranch>(*output_tree_collection->GetListOfBranches())) {
-        ASSERT_TRUE(b != nullptr);
-        EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for collection branch " << b->GetName();
-    }
-}
-
-TEST(RDFSnapshotMore, CustomBasketSize){
+TEST(RDFSnapshotMore, CustomBasketSizeMT){
    ROOT::EnableImplicitMT();
    TestCustomBasketSize();
    ROOT::DisableImplicitMT();
