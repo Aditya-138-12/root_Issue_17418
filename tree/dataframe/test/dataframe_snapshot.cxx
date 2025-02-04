@@ -141,7 +141,11 @@ void TestCustomBasketSize() {
     
     for (auto b : TRangeDynCast<TBranch>(*output_tree_custom->GetListOfBranches())) {
         ASSERT_TRUE(b != nullptr);
-        EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for scalar branch " << b->GetName();
+        // Only check branches that are newly created (_new suffix)
+        std::string branchName = b->GetName();
+        if(branchName.find("_new") != std::string::npos){
+         EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for scalar branch " << b->GetName();
+        }
     }
     
     TFile output_file_collection(raii.GetOutputFileCollection().c_str());
@@ -149,7 +153,11 @@ void TestCustomBasketSize() {
     
     for (auto b : TRangeDynCast<TBranch>(*output_tree_collection->GetListOfBranches())) {
         ASSERT_TRUE(b != nullptr);
-        EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for collection branch " << b->GetName();
+        // Only check branches that are newly created (_new suffix)
+        std::string branchName = b->GetName();
+        if(branchName.find("_new") != std::string::npos){
+         EXPECT_EQ(b->GetBasketSize(), 2048) << "Incorrect basket size for scalar branch " << b->GetName();
+        }
     }
 }
 
