@@ -20,6 +20,8 @@
 #include "TInterpreterValue.h"
 #include "TFormula.h"
 #include "TRegexp.h"
+#include "TObjString.h" // For HandlePolN starting at line 1004
+#include "TObjArray.h"  // For HandlePolN starting at line 1004
 
 #include "ROOT/StringUtils.hxx"
 
@@ -1003,82 +1005,95 @@ void TFormula::HandlePolN(TString &formula)
 {
    Int_t polPos = formula.Index("pol");
    while (polPos != kNPOS && !IsAParameterName(formula, polPos)) {
-
-      Bool_t defaultVariable = false;
-      TString variable;
-      Int_t openingBracketPos = formula.Index('(', polPos);
-      Bool_t defaultCounter = openingBracketPos == kNPOS;
-      Bool_t defaultDegree = true;
-      Int_t degree, counter;
+      // Find the polynomial degree
+      Int_t temp = polPos + 3;
       TString sdegree;
-      if (!defaultCounter) {
-         // verify first of opening parenthesis belongs to pol expression
-         // character between 'pol' and '(' must all be digits
-         sdegree = formula(polPos + 3, openingBracketPos - polPos - 3);
-         if (!sdegree.IsDigit())
-            defaultCounter = true;
+      while (temp < formula.Length() && isdigit(formula[temp])) {
+         sdegree.Append(formula[temp]);
+         temp++;
       }
-      if (!defaultCounter) {
-         degree = sdegree.Atoi();
-         counter = TString(formula(openingBracketPos + 1, formula.Index(')', polPos) - openingBracketPos)).Atoi();
-      } else {
-         Int_t temp = polPos + 3;
-         while (temp < formula.Length() && isdigit(formula[temp])) {
-            defaultDegree = false;
-            temp++;
-         }
-         degree = TString(formula(polPos + 3, temp - polPos - 3)).Atoi();
-         counter = 0;
+      Int_t degree = sdegree.IsNull() ? 1 : sdegree.Atoi();  // Default to pol1 if no degree specified
+
+      // Handle arguments
+      Int_t openBracket = formula.Index('(', polPos);
+      if (openBracket == kNPOS) {
+         // No brackets - use default form polN
+         TString replacement = BuildPolynomial("x", degree, 0);
+         TString pattern = TString::Format("pol%s", sdegree.Data());
+         formula.ReplaceAll(pattern, replacement);
+         continue;
       }
 
-      TString replacement = TString::Format("[%d]", counter);
-      if (polPos - 1 < 0 || !IsFunctionNameChar(formula[polPos - 1]) || formula[polPos - 1] == ':') {
-         variable = "x";
-         defaultVariable = true;
-      } else {
-         Int_t tmp = polPos - 1;
-         while (tmp >= 0 && IsFunctionNameChar(formula[tmp]) && formula[tmp] != ':') {
-            tmp--;
-         }
-         variable = formula(tmp + 1, polPos - (tmp + 1));
-      }
-      Int_t param = counter + 1;
-      Int_t tmp = 1;
-      while (tmp <= degree) {
-         if (tmp > 1)
-            replacement.Append(TString::Format("+[%d]*%s^%d", param, variable.Data(), tmp));
-         else
-            replacement.Append(TString::Format("+[%d]*%s", param, variable.Data()));
-         param++;
-         tmp++;
-      }
-      // add parenthesis before and after
-      if (degree > 0) {
-         replacement.Insert(0, '(');
-         replacement.Append(')');
-      }
-      TString pattern;
-      if (defaultCounter && !defaultDegree) {
-         pattern = TString::Format("%spol%d", (defaultVariable ? "" : variable.Data()), degree);
-      } else if (defaultCounter && defaultDegree) {
-         pattern = TString::Format("%spol", (defaultVariable ? "" : variable.Data()));
-      } else {
-         pattern = TString::Format("%spol%d(%d)", (defaultVariable ? "" : variable.Data()), degree, counter);
-      }
-
-      if (!formula.Contains(pattern)) {
-         Error("HandlePolN", "Error handling polynomial function - expression is %s - trying to replace %s with %s ",
-               formula.Data(), pattern.Data(), replacement.Data());
+      // Find matching closing bracket
+      Int_t closeBracket = formula.Index(')', openBracket);
+      if (closeBracket == kNPOS) {
+         Error("HandlePolN", "Missing closing bracket in polynomial expression");
          break;
       }
-      if (formula == pattern) {
-         // case of single polynomial
-         SetBit(kLinear, true);
-         fNumber = 300 + degree;
+
+      // Extract and parse arguments
+      TString args = formula(openBracket + 1, closeBracket - openBracket - 1);
+      std::unique_ptr<TObjArray> tokens(args.Tokenize(","));
+      if (!tokens || tokens->GetEntriesFast() < 1) {
+         Error("HandlePolN", "Invalid number of arguments for polynomial");
+         break;
       }
+
+      // First argument should be the variable
+      TString variable = static_cast<TObjString*>(tokens->At(0))->GetString();
+      variable.Strip(TString::kBoth);  // Remove whitespace
+      
+      // Get starting parameter number
+      Int_t paramStart = 0;
+      if (tokens->GetEntriesFast() > 1) {
+         TString startParam = static_cast<TObjString*>(tokens->At(1))->GetString();
+         startParam.Strip(TString::kBoth);
+         if (startParam.BeginsWith("[") && startParam.EndsWith("]")) {
+            // Parameter placeholder provided
+            startParam = startParam(1, startParam.Length()-2);
+            paramStart = startParam.Atoi();
+         } else {
+            paramStart = startParam.Atoi();
+         }
+      }
+
+      // Build the polynomial replacement
+      TString replacement = BuildPolynomial(variable, degree, paramStart);
+      
+      // Replace in the original formula
+      TString pattern = formula(polPos, closeBracket - polPos + 1);
       formula.ReplaceAll(pattern, replacement);
+
       polPos = formula.Index("pol");
    }
+}
+
+TString TFormula::BuildPolynomial(const TString& var, Int_t degree, Int_t startParam)
+{
+   TString result;
+   
+   // Handle degree 0 case
+   if (degree == 0) {
+      result.Form("[%d]", startParam);
+      return result;
+   }
+
+   // Build the polynomial expression
+   result.Form("[%d]", startParam);  // Constant term
+   for (Int_t i = 1; i <= degree; i++) {
+      result.Append(TString::Format("+[%d]*%s", startParam + i, var.Data()));
+      if (i > 1) {
+         result.Append(TString::Format("^%d", i));
+      }
+   }
+
+   // Add parentheses for multi-term polynomials
+   if (degree > 0) {
+      result.Insert(0, '(');
+      result.Append(')');
+   }
+
+   return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

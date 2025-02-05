@@ -114,6 +114,7 @@ private:
    Bool_t   PrepareEvalMethod();
    void     FillDefaults();
    void     HandlePolN(TString &formula);
+   TString BuildPolynomial(const TString& var, Int_t degree, Int_t startParam);
    void     HandleParametrizedFunctions(TString &formula);
    void HandleParamRanges(TString &formula);
    void HandleFunctionArguments(TString &formula);
