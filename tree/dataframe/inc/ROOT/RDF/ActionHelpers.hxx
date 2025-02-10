@@ -1359,17 +1359,19 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          outputBranch->SetAddress(address);
          branchAddress = address;
       }
+      // Set basket size specified by the user, regardless of branch types
+      if(basketSize.has_value()){
+         outputBranch->SetBasketSize(basketSize.value());
+      }
       return;
    }
-
-   bool isNewBranch = isDefine || !inputBranch;    // Determine if this is a new branch or not (Created via Define).
 
    if (inputBranch) {
       // Respect the original bufsize and splitlevel arguments
       // In particular, by keeping splitlevel equal to 0 if this was the case for `inputBranch`, we avoid
       // writing garbage when unsplit objects cannot be written as split objects (e.g. in case of a polymorphic
       // TObject branch, see https://bit.ly/2EjLMId ).
-      const auto bufSize = isNewBranch && basketSize.has_value() ? basketSize.value() : inputBranch->GetBasketSize();   //Use original basket size for existing branches and new basket size for new branches
+      const auto bufSize = basketSize.has_value() ? basketSize.value() : inputBranch->GetBasketSize();   //Use original basket size for existing branches otherwise custom basket size for new branches
       const auto splitLevel = inputBranch->GetSplitLevel();
 
       if (inputBranch->IsA() == TBOClRef) {
@@ -1382,7 +1384,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
    } else {
       outputBranch = outputTree.Branch(name.c_str(), address);
       // Set Custom basket size for new branches.
-      if(isNewBranch && basketSize.has_value()){
+      if(basketSize.has_value()){
          outputBranch->SetBasketSize(basketSize.value());
       }
    }
@@ -1414,7 +1416,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
    }
    auto *outputBranch = outputBranches.Get(outName);
 
-   bool isNewBranch = isDefine || !inputBranch;    // Determine if this is a new branch or not (Created via Define).
+   //bool isNewBranch = isDefine || !inputBranch;    // Determine if this is a new branch or not (Created via Define).
 
    // if no backing input branch, we must write out an RVec
    bool mustWriteRVec = (inputBranch == nullptr || isDefine);
@@ -1442,10 +1444,14 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       if (outputBranch) {
          // needs to be SetObject (not SetAddress) to mimic what happens when this TBranchElement is constructed
          outputBranch->SetObject(ab);
+         // Set basket size if specified by the user
+         if(basketSize.has_value()){
+            outputBranch->SetBasketSize(basketSize.value());
+         }
       } else {
          auto *b = outputTree.Branch(outName.c_str(), ab);
          // Set Custom basket size for new branches.
-         if(isNewBranch && basketSize.has_value()){
+         if(basketSize.has_value()){
             b->SetBasketSize(basketSize.value());
          }
          outputBranches.Insert(outName, b);
@@ -1463,6 +1469,10 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       } else {
          outputBranch->SetAddress(dataPtr);
       }
+      // Set Basket size if Specified by the user
+      if(basketSize.has_value()){
+         outputBranch->SetBasketSize(basketSize.value());   
+      }
    } else {
       // must construct the leaflist for the output branch and create the branch in the output tree
       auto *const leaf = static_cast<TLeaf *>(inputBranch->GetListOfLeaves()->UncheckedAt(0));
@@ -1475,8 +1485,8 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          // added to the output tree yet. However, the size leaf has to be available for the creation of the array
          // branch to be successful. So we create the size leaf here.
          const auto sizeTypeStr = TypeName2ROOTTypeName(sizeLeaf->GetTypeName());
-         // Use Original basket size for Existing Branches.
-         const auto sizeBufSize = sizeLeaf->GetBranch()->GetBasketSize();
+         // Use Original basket size for Existing Branches otherwise use Custom basket Size.
+         const auto sizeBufSize = basketSize.has_value() ? basketSize.value() : sizeLeaf->GetBranch()->GetBasketSize();;
          // The null branch address is a placeholder. It will be set when SetBranchesHelper is called for `sizeLeafName`
          auto *sizeBranch = outputTree.Branch(sizeLeafName.c_str(), (void *)nullptr,
                                               (sizeLeafName + '/' + sizeTypeStr).c_str(), sizeBufSize);
@@ -1493,7 +1503,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       } else {
          const auto leaflist = std::string(bname) + "[" + sizeLeafName + "]/" + rootbtype;
          // Use original basket size for existing branches and new basket size for new branches
-         const auto branchBufSize = isNewBranch && basketSize.has_value() ? basketSize.value() : inputBranch->GetBasketSize();
+         const auto branchBufSize = basketSize.has_value() ? basketSize.value() : inputBranch->GetBasketSize();
          outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str(), branchBufSize);
          outputBranch->SetTitle(inputBranch->GetTitle());
          outputBranches.Insert(outName, outputBranch);
