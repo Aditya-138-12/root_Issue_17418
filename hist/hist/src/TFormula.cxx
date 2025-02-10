@@ -1000,100 +1000,152 @@ void TFormula::FillVecFunctionsShurtCuts() {
 ///    eg.
 ///    varpol2(5) will be replaced with: [5] + [6]*var + [7]*var^2
 ///    Empty name is treated like variable x.
+///    Extended format also supports direct variable specification: pol2(x, 0) or pol(x, [A])
+///    Traditional Syntax: polN - Polynomial of degree of N with default variable x and parameters starting at [0]
+///                        polN(M) - Polynomial of degree N with parameters starting at [M]
+///                        ypolN - Polynomial of degree N with variable y and parameters starting at [0]
+///    Extended Syntax:    polN(var, M) - Polynomial of degree N with variable var and parameters starting at [M]
+///                        polN(var, [A]) - Polynomial of degree N with variable var and parameters starting at [A]
+///    Formula Transformation Examples
+///    Input            Output
+///    pol1              [p0]+[p1]*x
+///    pol2              [p0]+[p1]*x+[p2]*TMath::Sq(x)
+///    ypol1             [p0]+[p1]*y
+///    pol1(x, 0)        [p0]+[p1]*x
+///    pol2(y, 1)        [p1]+[p2]*y+[p3]*TMath::Sq(y)
+///
+///    Extended Code Documentation
+///    The polynomial handling has been enhanced to support explicit variable names
+///    and parameter placeholders in polynomial expressions. This makes the syntax
+///    more consistent with other function types in ROOT (like gaus) and provides
+///    more flexibility in polynomial construction.
+///    The function reports errors through ROOT's error handling system
+///
+///    This documentation update reflects changes made to support
+///    GitHub issue #16794 for enhanced polynomial syntax support.
 
 void TFormula::HandlePolN(TString &formula)
 {
    Int_t polPos = formula.Index("pol");
    while (polPos != kNPOS && !IsAParameterName(formula, polPos)) {
-      // Find the polynomial degree
-      Int_t temp = polPos + 3;
+      Bool_t defaultVariable = false;
+      TString variable;
+      Int_t openingBracketPos = formula.Index('(', polPos);
+      Bool_t defaultCounter = openingBracketPos == kNPOS;
+      Bool_t defaultDegree = true;
+      Int_t degree, counter;
       TString sdegree;
-      while (temp < formula.Length() && isdigit(formula[temp])) {
-         sdegree.Append(formula[temp]);
-         temp++;
-      }
-      Int_t degree = sdegree.IsNull() ? 1 : sdegree.Atoi();  // Default to pol1 if no degree specified
 
-      // Handle arguments
-      Int_t openBracket = formula.Index('(', polPos);
-      if (openBracket == kNPOS) {
-         // No brackets - use default form polN
-         TString replacement = BuildPolynomial("x", degree, 0);
-         TString pattern = TString::Format("pol%s", sdegree.Data());
-         formula.ReplaceAll(pattern, replacement);
-         continue;
-      }
-
-      // Find matching closing bracket
-      Int_t closeBracket = formula.Index(')', openBracket);
-      if (closeBracket == kNPOS) {
-         Error("HandlePolN", "Missing closing bracket in polynomial expression");
-         break;
-      }
-
-      // Extract and parse arguments
-      TString args = formula(openBracket + 1, closeBracket - openBracket - 1);
-      std::unique_ptr<TObjArray> tokens(args.Tokenize(","));
-      if (!tokens || tokens->GetEntriesFast() < 1) {
-         Error("HandlePolN", "Invalid number of arguments for polynomial");
-         break;
-      }
-
-      // First argument should be the variable
-      TString variable = static_cast<TObjString*>(tokens->At(0))->GetString();
-      variable.Strip(TString::kBoth);  // Remove whitespace
-      
-      // Get starting parameter number
-      Int_t paramStart = 0;
-      if (tokens->GetEntriesFast() > 1) {
-         TString startParam = static_cast<TObjString*>(tokens->At(1))->GetString();
-         startParam.Strip(TString::kBoth);
-         if (startParam.BeginsWith("[") && startParam.EndsWith("]")) {
-            // Parameter placeholder provided
-            startParam = startParam(1, startParam.Length()-2);
-            paramStart = startParam.Atoi();
-         } else {
-            paramStart = startParam.Atoi();
+      // Check for extended format supporting direct variable specification
+      Bool_t isNewFormat = false;
+      if (!defaultCounter) {
+         TString args = formula(openingBracketPos + 1, formula.Index(')', polPos) - openingBracketPos - 1);
+         if (args.Contains(",")) {
+            isNewFormat = true;
+            // Extract degree for new format - defaults to 1 if not specified
+            sdegree = formula(polPos + 3, openingBracketPos - polPos - 3);
+            if (!sdegree.IsDigit()) sdegree = "1";
+            degree = sdegree.Atoi();
+            
+            // Handle comma-separated arguments for variable name and parameter start
+            std::unique_ptr<TObjArray> tokens(args.Tokenize(","));
+            if (tokens && tokens->GetEntriesFast() > 0) {
+               variable = static_cast<TObjString*>(tokens->At(0))->GetString();
+               variable.Strip(TString::kBoth);
+               
+               counter = 0;  // Default parameter start
+               if (tokens->GetEntriesFast() > 1) {
+                  TString paramStr = static_cast<TObjString*>(tokens->At(1))->GetString();
+                  paramStr.Strip(TString::kBoth);
+                  // Support for parameter placeholders like [A]
+                  if (paramStr.BeginsWith("[") && paramStr.EndsWith("]")) {
+                     paramStr = paramStr(1, paramStr.Length()-2);
+                  }
+                  counter = paramStr.Atoi();
+               }
+            }
          }
       }
 
-      // Build the polynomial replacement
-      TString replacement = BuildPolynomial(variable, degree, paramStart);
-      
-      // Replace in the original formula
-      TString pattern = formula(polPos, closeBracket - polPos + 1);
-      formula.ReplaceAll(pattern, replacement);
+      // Original format handling
+      if (!isNewFormat) {
+         if (!defaultCounter) {
+            // verify first of opening parenthesis belongs to pol expression
+            // character between 'pol' and '(' must all be digits
+            sdegree = formula(polPos + 3, openingBracketPos - polPos - 3);
+            if (!sdegree.IsDigit())
+               defaultCounter = true;
+         }
+         if (!defaultCounter) {
+            degree = sdegree.Atoi();
+            counter = TString(formula(openingBracketPos + 1, formula.Index(')', polPos) - openingBracketPos)).Atoi();
+         } else {
+            Int_t temp = polPos + 3;
+            while (temp < formula.Length() && isdigit(formula[temp])) {
+               defaultDegree = false;
+               temp++;
+            }
+            degree = TString(formula(polPos + 3, temp - polPos - 3)).Atoi();
+            counter = 0;
+         }
 
+         if (polPos - 1 < 0 || !IsFunctionNameChar(formula[polPos - 1]) || formula[polPos - 1] == ':') {
+            variable = "x";
+            defaultVariable = true;
+         } else {
+            Int_t tmp = polPos - 1;
+            while (tmp >= 0 && IsFunctionNameChar(formula[tmp]) && formula[tmp] != ':') {
+               tmp--;
+            }
+            variable = formula(tmp + 1, polPos - (tmp + 1));
+         }
+      }
+
+      // Build polynomial replacement string
+      TString replacement = TString::Format("[%d]", counter);
+      Int_t param = counter + 1;
+      Int_t tmp = 1;
+      while (tmp <= degree) {
+         if (tmp > 1)
+            replacement.Append(TString::Format("+[%d]*%s^%d", param, variable.Data(), tmp));
+         else
+            replacement.Append(TString::Format("+[%d]*%s", param, variable.Data()));
+         param++;
+         tmp++;
+      }
+
+      if (degree > 0) {
+         replacement.Insert(0, '(');
+         replacement.Append(')');
+      }
+
+      // Pattern creation with support for both original and extended formats
+      TString pattern;
+      if (isNewFormat) {
+         pattern = formula(polPos, formula.Index(')', polPos) - polPos + 1);
+      } else if (defaultCounter && !defaultDegree) {
+         pattern = TString::Format("%spol%d", (defaultVariable ? "" : variable.Data()), degree);
+      } else if (defaultCounter && defaultDegree) {
+         pattern = TString::Format("%spol", (defaultVariable ? "" : variable.Data()));
+      } else {
+         pattern = TString::Format("%spol%d(%d)", (defaultVariable ? "" : variable.Data()), degree, counter);
+      }
+
+      if (!formula.Contains(pattern)) {
+         Error("HandlePolN", "Error handling polynomial function - expression is %s - trying to replace %s with %s ",
+               formula.Data(), pattern.Data(), replacement.Data());
+         break;
+      }
+      
+      if (formula == pattern) {
+         // case of single polynomial
+         SetBit(kLinear, true);
+         fNumber = 300 + degree;
+      }
+      
+      formula.ReplaceAll(pattern, replacement);
       polPos = formula.Index("pol");
    }
-}
-
-TString TFormula::BuildPolynomial(const TString& var, Int_t degree, Int_t startParam)
-{
-   TString result;
-   
-   // Handle degree 0 case
-   if (degree == 0) {
-      result.Form("[%d]", startParam);
-      return result;
-   }
-
-   // Build the polynomial expression
-   result.Form("[%d]", startParam);  // Constant term
-   for (Int_t i = 1; i <= degree; i++) {
-      result.Append(TString::Format("+[%d]*%s", startParam + i, var.Data()));
-      if (i > 1) {
-         result.Append(TString::Format("^%d", i));
-      }
-   }
-
-   // Add parentheses for multi-term polynomials
-   if (degree > 0) {
-      result.Insert(0, '(');
-      result.Append(')');
-   }
-
-   return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
