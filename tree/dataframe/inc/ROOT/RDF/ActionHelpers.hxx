@@ -1336,7 +1336,7 @@ void *GetData(T & /*v*/)
 template <typename T>
 void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &inName, const std::string &name,
                        TBranch *&branch, void *&branchAddress, T *address, RBranchSet &outputBranches,
-                       bool isDefine, const std::optional<int> &basketSize)
+                       bool /*isDefine*/, const std::optional<int> &basketSize)
 {
    static TClassRef TBOClRef("TBranchObject");
 
