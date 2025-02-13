@@ -34,8 +34,17 @@ TEST(TFormulaPolTest, VariablePolynomials) {
 
 TEST(TFormulaPolTest, ParameterPlaceholders) {
     
-    TFormula f1("f1", "pol1(x,[5])");
-    EXPECT_EQ(f1.GetExpFormula(), TString("([p5]+[p6]*x)"));
+    TFormula f1("f1", "pol1(x,[A])");
+    EXPECT_EQ(f1.GetExpFormula(), TString("([p0]+[p1]*x)"));
+    f1.SetParameter("A", -1.234);
+    f1.SetParameter(0, -1.234);
+    EXPECT_EQ(f1.GetParameter("A"), -1.234);
+    EXPECT_EQ(f1.GetParameter(0), -1.234);
+    
+    f1.SetParameter(1, -1.236);
+    EXPECT_EQ(f1.GetParameter("A"), -1.234);
+    EXPECT_EQ(f1.GetParameter(0), -1.234);
+    EXPECT_EQ(f1.GetParameter(1), -1.236);
 }
 
 TEST(TFormulaPolTest, NumericEvaluation) {
@@ -49,8 +58,23 @@ TEST(TFormulaPolTest, NumericEvaluation) {
 
 TEST(TFormulaPolTest, ConstantPolynomial) {
     
-    TFormula f1("f1", "pol0(x,5)");
-    EXPECT_EQ(f1.GetExpFormula(), TString("[p5]"));
+    TFormula f1("f1", "pol1(x,[A])");
+    EXPECT_EQ(f1.GetExpFormula(), TString("([p0]+[p1]*x)"));
+    f1.SetParameter("A", -1.234);
+    EXPECT_EQ(f1.GetParameter("A"), -1.234);
+    f1.SetParameter(0, -1.235);
+    EXPECT_EQ(f1.GetParameter(0), -1.235);
+    f1.SetParameter(1, -1.236);
+    EXPECT_EQ(f1.GetParameter(1), -1.236);
+    
+    TFormula f2("f2", "pol2(x, [A], [B], [C])");
+    EXPECT_EQ(f2.GetExpFormula(), TString("([p0]+[p1]*x+[p2]*TMath::Sq(x))"));
+    f2.SetParameter("A", -1.234);
+    EXPECT_EQ(f2.GetParameter("A"), -1.234);
+    f2.SetParameter("B", -1.235);
+    EXPECT_EQ(f2.GetParameter("B"), -1.235);
+    f2.SetParameter("C", -1.236);
+    EXPECT_EQ(f2.GetParameter("C"), -1.236);
 }
 
 TEST(TFormulaPolTest, CompoundExpressions) {

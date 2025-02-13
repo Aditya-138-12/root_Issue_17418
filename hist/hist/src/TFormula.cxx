@@ -1001,15 +1001,7 @@ void TFormula::FillVecFunctionsShurtCuts() {
 ///    varpol2(5) will be replaced with: [5] + [6]*var + [7]*var^2
 ///    Empty name is treated like variable x.
 ///    Extended format also supports direct variable specification: pol2(x, 0) or pol(x, [A])
-///    Traditional Syntax: polN - Polynomial of degree of N with default variable x and parameters starting at [0]
-///                        polN(M) - Polynomial of degree N with parameters starting at [M]
-///                        ypolN - Polynomial of degree N with variable y and parameters starting at [0]
-///    Extended Syntax:    polN(var, M) - Polynomial of degree N with variable var and parameters starting at [M]
-///                        polN(var, [A]) - Polynomial of degree N with variable var and parameters starting at [A]
-///    Formula Transformation Examples
-///    Input            Output
-///    pol1              [p0]+[p1]*x
-///    pol2              [p0]+[p1]*x+[p2]*TMath::Sq(x)
+///    Traditional Syntax: polN - Polynomial ofreturn it->second;(x)
 ///    ypol1             [p0]+[p1]*y
 ///    pol1(x, 0)        [p0]+[p1]*x
 ///    pol2(y, 1)        [p1]+[p2]*y+[p3]*TMath::Sq(y)
@@ -1054,14 +1046,27 @@ void TFormula::HandlePolN(TString &formula)
                variable.Strip(TString::kBoth);
                
                counter = 0;  // Default parameter start
-               if (tokens->GetEntriesFast() > 1) {
-                  TString paramStr = static_cast<TObjString*>(tokens->At(1))->GetString();
+               // Process all parameters after the variable
+               for (Int_t i = 1; i < tokens->GetEntriesFast(); i++) {
+                  TString paramStr = static_cast<TObjString*>(tokens->At(i))->GetString();
                   paramStr.Strip(TString::kBoth);
                   // Support for parameter placeholders like [A]
                   if (paramStr.BeginsWith("[") && paramStr.EndsWith("]")) {
-                     paramStr = paramStr(1, paramStr.Length()-2);
+                     paramStr = paramStr(1, paramStr.Length() - 2); // Remove brackets
+                     // Register the named parameter and get its index
+                     if (fParams.find(paramStr) == fParams.end()) {
+                        fParams[paramStr] = fNpar; // Assign the next available index
+                        fClingParameters.push_back(0.0); // Initialize the parameter value
+                        fNpar++; // Increment the parameter count
+                     }
+                     if (i == 1) {  // First parameter sets the counter
+                        counter = fParams[paramStr];
+                     }
+                  } else {
+                     if (i == 1) {  // First parameter sets the counter for numeric case
+                        counter = paramStr.Atoi(); // Fallback to numeric index
+                     }
                   }
-                  counter = paramStr.Atoi();
                }
             }
          }
@@ -1070,8 +1075,7 @@ void TFormula::HandlePolN(TString &formula)
       // Original format handling
       if (!isNewFormat) {
          if (!defaultCounter) {
-            // verify first of opening parenthesis belongs to pol expression
-            // character between 'pol' and '(' must all be digits
+            // Verify that the characters between 'pol' and '(' are all digits
             sdegree = formula(polPos + 3, openingBracketPos - polPos - 3);
             if (!sdegree.IsDigit())
                defaultCounter = true;
@@ -1138,7 +1142,7 @@ void TFormula::HandlePolN(TString &formula)
       }
       
       if (formula == pattern) {
-         // case of single polynomial
+         // Case of single polynomial
          SetBit(kLinear, true);
          fNumber = 300 + degree;
       }
