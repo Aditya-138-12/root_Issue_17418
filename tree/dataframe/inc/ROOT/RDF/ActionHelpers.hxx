@@ -1359,10 +1359,6 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          outputBranch->SetAddress(address);
          branchAddress = address;
       }
-      // Set basket size specified by the user, regardless of branch types
-      if(basketSize.has_value()){
-         outputBranch->SetBasketSize(basketSize.value());
-      }
       return;
    }
 
@@ -1382,11 +1378,9 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          outputBranch = outputTree.Branch(name.c_str(), address, bufSize, splitLevel);
       }
    } else {
-      outputBranch = outputTree.Branch(name.c_str(), address);
       // Set Custom basket size for new branches.
-      if(basketSize.has_value()){
-         outputBranch->SetBasketSize(basketSize.value());
-      }
+      const auto buffSize = basketSize.value_or(32000);
+      outputBranch = outputTree.Branch(name.c_str(), address, buffSize);
    }
    outputBranches.Insert(name, outputBranch);
    // This is not an array branch, so we don't register the address of the output branch here
@@ -1444,16 +1438,10 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       if (outputBranch) {
          // needs to be SetObject (not SetAddress) to mimic what happens when this TBranchElement is constructed
          outputBranch->SetObject(ab);
-         // Set basket size if specified by the user
-         if(basketSize.has_value()){
-            outputBranch->SetBasketSize(basketSize.value());
-         }
       } else {
-         auto *b = outputTree.Branch(outName.c_str(), ab);
          // Set Custom basket size for new branches.
-         if(basketSize.has_value()){
-            b->SetBasketSize(basketSize.value());
-         }
+         const auto buffSize = basketSize.value_or(32000);
+         auto *b = outputTree.Branch(outName.c_str(), ab, buffSize);
          outputBranches.Insert(outName, b);
       }
       return;
@@ -1468,10 +1456,6 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          outputBranch->SetAddress(&branchAddress);
       } else {
          outputBranch->SetAddress(dataPtr);
-      }
-      // Set Basket size if Specified by the user
-      if(basketSize.has_value()){
-         outputBranch->SetBasketSize(basketSize.value());   
       }
    } else {
       // must construct the leaflist for the output branch and create the branch in the output tree
