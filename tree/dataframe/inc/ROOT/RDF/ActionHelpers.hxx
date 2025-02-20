@@ -1379,7 +1379,7 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
       }
    } else {
       // Set Custom basket size for new branches.
-      const auto buffSize = basketSize.value_or(32000);
+      const auto buffSize = basketSize.has_value() ? basketSize.value() : (inputBranch ? inputBranch->GetBasketSize() : 32000);
       outputBranch = outputTree.Branch(name.c_str(), address, buffSize);
    }
    outputBranches.Insert(name, outputBranch);
@@ -1439,8 +1439,8 @@ void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &i
          // needs to be SetObject (not SetAddress) to mimic what happens when this TBranchElement is constructed
          outputBranch->SetObject(ab);
       } else {
-         // Set Custom basket size for new branches.
-         const auto buffSize = basketSize.value_or(32000);
+         // Set Custom basket size for new branches if specified, otherwise get basket size from input branches
+         const auto buffSize = basketSize.has_value() ? basketSize.value() : (inputBranch ? inputBranch->GetBasketSize() : 32000);
          auto *b = outputTree.Branch(outName.c_str(), ab, buffSize);
          outputBranches.Insert(outName, b);
       }

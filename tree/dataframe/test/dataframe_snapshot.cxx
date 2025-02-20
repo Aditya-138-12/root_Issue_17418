@@ -153,9 +153,94 @@ void TestCustomBasketSize() {
     }
 }
 
+void TestDefaultBasketSize()
+{
+   SnapshotCustomBasketRAII helper;
+   const Int_t defaultBasketSize = 32000;
+
+   ROOT::RDataFrame df("tree", helper.GetInputFile());
+   
+   
+   df.Snapshot("tree", helper.GetOutputFileCustom());
+   
+   
+   std::unique_ptr<TFile> f(TFile::Open(helper.GetOutputFileCustom().c_str()));
+   ASSERT_TRUE(f != nullptr);
+   
+   auto tree = f->Get<TTree>("tree");
+   ASSERT_TRUE(tree != nullptr);
+   
+   
+   auto branchX = tree->GetBranch("branch_x");
+   ASSERT_TRUE(branchX != nullptr);
+   EXPECT_EQ(branchX->GetBasketSize(), defaultBasketSize)
+      << "Scalar branch doesn't have default basket size";
+   
+   
+   auto branchVec = tree->GetBranch("branch_vec");
+   ASSERT_TRUE(branchVec != nullptr);
+   EXPECT_EQ(branchVec->GetBasketSize(), defaultBasketSize)
+      << "Vector branch doesn't have default basket size";
+}
+
+void TestBasketSizePreservation()
+{
+    SnapshotCustomBasketRAII helper;
+    
+    // Define the columns we want to snapshot
+    const std::vector<std::string> columns = {"branch_x", "branch_vec"};
+    
+    // First create a tree with custom basket size
+    {
+        ROOT::RDataFrame df("tree", helper.GetInputFile());
+        ROOT::RDF::RSnapshotOptions options;
+        options.fBasketSize = 64000; // 64KB
+        df.Snapshot("tree", helper.GetOutputFileCustom(), columns, options);
+    }
+    
+    // Now read that tree and create new snapshot without specifying basket size
+    {
+        ROOT::RDataFrame df("tree", helper.GetOutputFileCustom());
+        df.Snapshot("tree", helper.GetOutputFileCollection(), columns);
+    }
+    
+    // Open both files and compare basket sizes
+    std::unique_ptr<TFile> f1(TFile::Open(helper.GetOutputFileCustom().c_str()));
+    std::unique_ptr<TFile> f2(TFile::Open(helper.GetOutputFileCollection().c_str()));
+    ASSERT_TRUE(f1 != nullptr);
+    ASSERT_TRUE(f2 != nullptr);
+    
+    auto tree1 = f1->Get<TTree>("tree");
+    auto tree2 = f2->Get<TTree>("tree");
+    ASSERT_TRUE(tree1 != nullptr);
+    ASSERT_TRUE(tree2 != nullptr);
+    
+    // Check both branches
+    for (const auto& branchName : columns) {
+        auto branch1 = tree1->GetBranch(branchName.c_str());
+        auto branch2 = tree2->GetBranch(branchName.c_str());
+        ASSERT_TRUE(branch1 != nullptr);
+        ASSERT_TRUE(branch2 != nullptr);
+        
+        EXPECT_EQ(branch2->GetBasketSize(), branch1->GetBasketSize())
+            << "Branch '" << branchName << "' basket size not preserved";
+    }
+}
+
+
 // Test for custom basket size
 TEST(RDFSnapshotMore, CustomBasketSize){
    TestCustomBasketSize();
+}
+
+// Test for default basket size
+TEST(RDFSnapshotMore, DefaultBasketSize){
+   TestDefaultBasketSize();
+}
+
+// Test for basket size preservation
+TEST(RDFSnapshotMore, BasketSizePreservation){
+   TestBasketSizePreservation();
 }
 
 // fixture that provides fixed and variable sized arrays as RDF columns
@@ -1555,6 +1640,20 @@ TEST(RDFSnapshotMore, ZeroOutputEntriesMT)
 TEST(RDFSnapshotMore, CustomBasketSizeMT){
    ROOT::EnableImplicitMT();
    TestCustomBasketSize();
+   ROOT::DisableImplicitMT();
+}
+
+// Test for default basket size
+TEST(RDFSnapshotMore, DefaultBasketSizeMT){
+   ROOT::EnableImplicitMT();
+   TestDefaultBasketSize();
+   ROOT::DisableImplicitMT();
+}
+
+// Test for basket size preservation
+TEST(RDFSnapshotMore, BasketSizePreservationMT){
+   ROOT::EnableImplicitMT();
+   TestBasketSizePreservation();
    ROOT::DisableImplicitMT();
 }
 
